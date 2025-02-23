@@ -1,0 +1,3 @@
+[submodule "common/stm32wl_drivers"]
+	path = common/stm32wl_drivers
+	url = git@github.com:AJ528/stm32wl_drivers.git
