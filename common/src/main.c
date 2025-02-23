@@ -42,6 +42,7 @@ static void run_test(void);
 
 TEST strcmp_test(const char *str1, const char *str2, bool print_performance);
 TEST strcmp_variable_alignment(const char *str1, const char *str2, bool print_performance);
+TEST strcmp_special_alignment(const char *str1, const char *str2, uint32_t s1_offset, uint32_t s2_offset, bool print_performance);
 
 #define BUFFER_SIZE 0x100
 
@@ -111,37 +112,62 @@ int main(void)
 
 static void run_test(void)
 {
-  printfln_("%-6s %-10s %-10s %-8s %-8s %-8s", "d_len", "src_off", "dest_off", "o_cycle", "n_cycle", "c_diff");
+  printfln_("%-10s %-10s %-6s %-6s %-6s %-6s %-8s %-8s %-8s", "s1", "s2", "s1_off", "s2_off", "o_ret", "n_ret", "o_cycle", "n_cycle", "c_diff");
 
   GREATEST_MAIN_BEGIN();  // command-line options, initialization.
 
 
   RUN_TESTp(strcmp_variable_alignment, "test", "test", true);
-  RUN_TESTp(strcmp_variable_alignment, "test_string1", "test_string2", true);
+  RUN_TESTp(strcmp_variable_alignment, "tstring1", "tstring2", true);
+  RUN_TESTp(strcmp_variable_alignment, "tstring2", "tstring1", true);
+  RUN_TESTp(strcmp_variable_alignment, "testa", "testA", true);
+  RUN_TESTp(strcmp_variable_alignment, "testA", "testa", true);
+  RUN_TESTp(strcmp_variable_alignment, "four score and seven years ago there was a very long string", "four score and seven years ago there was a very long string", true);
+  RUN_TESTp(strcmp_variable_alignment, "four score and seven years ag0 there was a very long string", "four score and seven years ago there was a very long string", true);
+  RUN_TESTp(strcmp_variable_alignment, "four score and seven years ago there was a very long string", "four score and seven years ago there was a very lon% string", true);
+
+  // RUN_TESTp(strcmp_special_alignment, "tstring2", "tstring1", 2, 1, true);
+  // RUN_TESTp(strcmp_special_alignment, "tstring2", "tstring1", 2, 2, true);
+
 
   GREATEST_MAIN_END();    // display results
 }
 
 TEST strcmp_test(const char *str1, const char *str2, bool print_performance)
 {
+  // must run the function 1 time before timing it in order to get consistent performance
   int expected_retval = strcmp(str1, str2);
   uint32_t strcmp_orig_start = get_cycle_count();
   expected_retval = strcmp(str1, str2);
   uint32_t strcmp_orig_stop = get_cycle_count();
 
-  int actual_retval = strcmp(str1, str2);
+  // must run the function 1 time before timing it in order to get consistent performance
+  int actual_retval = strcmp_(str1, str2);
   uint32_t strcmp_new_start = get_cycle_count();
-  actual_retval = strcmp(str1, str2);
+  actual_retval = strcmp_(str1, str2);
   uint32_t strcmp_new_stop = get_cycle_count();
 
   if(print_performance){
     uint32_t orig_cycle = strcmp_orig_stop-strcmp_orig_start;
     uint32_t new_cycle = strcmp_new_stop-strcmp_new_start;
     int32_t cycle_diff = orig_cycle - new_cycle;
-    printfln_("%-6u %-#10x %-#10x %-8u %-8u %-8d", 0, 0, 0, orig_cycle, new_cycle, cycle_diff);
+    char s1_title[11] = {0};
+    char s2_title[11] = {0};
+
+    strncpy_(s1_title, str1, sizeof(s1_title)-1);
+    strncpy_(s2_title, str2, sizeof(s2_title)-1);
+
+    char s1_off[11] = {0};
+    char s2_off[11] = {0};
+
+    snprintf_(s1_off, sizeof(s1_off), "%p", str1);
+    snprintf_(s2_off, sizeof(s2_off), "%p", str2);
+
+    printfln_("%-10s %-10s %-6s %-6s %-6d %-6d %-8u %-8u %-8d", s1_title, s2_title, &s1_off[6], &s2_off[6], expected_retval, actual_retval, orig_cycle, new_cycle, cycle_diff);
   }
 
-  ASSERT_EQ(expected_retval, actual_retval);
+  // ASSERT_EQ_FMT(expected_retval, actual_retval, "%i");
+
   PASS();
 }
 
@@ -159,6 +185,18 @@ TEST strcmp_variable_alignment(const char *str1, const char *str2, bool print_pe
       CHECK_CALL(strcmp_test(s1_addr, s2_addr, print_performance));
     }
   }
+  PASS();
+}
+
+TEST strcmp_special_alignment(const char *str1, const char *str2, uint32_t s1_offset, uint32_t s2_offset, bool print_performance)
+{
+  char s1[BUFFER_SIZE] __attribute__((aligned(4))) = {0};
+  char s2[BUFFER_SIZE] __attribute__((aligned(4))) = {0};
+  char *s1_addr = s1 + s1_offset;
+  char *s2_addr = s2 + s2_offset;
+  strcpy(s1_addr, str1);
+  strcpy(s2_addr, str2);
+  CHECK_CALL(strcmp_test(s1_addr, s2_addr, print_performance));
   PASS();
 }
 

@@ -12,92 +12,112 @@
   @ marks the symbol as being a function name
   .type strcmp_, STT_FUNC
 strcmp_:
-@ r0 = destination addr
-@ r1 = source addr
-@ r2 = num bytes
-@ returns destination addr in r0
+@ r0 = pointer to the beginning of str1
+@ r1 = pointer to the beginning of str2
+@ returns str1[n]-str2[n], where n is the point where the strings differ
 
-  cmp   r2, #0              @ if there are 0 bytes to move
-  beq   no_pop_exit                @ exit
-  push  {r4, r5}        @ store r4 & r5 values on stack
+  subs  r2, r0, r1
+  beq   no_pop_exit         @ if pointers are the same, exit
+  push  {r4, r5, r6}
 
-  movs  r5, #3              @ put a 3 in r5. This is used later to test for 4-byte alignment.
-  subs  r4, r0, r1          @ subtract source addr from destination addr, update flags, and store result in r4
-  beq   exit                @ if source=destination, nothing to do
+  lsls  r2, r2, #30         @ look at the 2 least-significant bits
+  bne   byte_compare        @ if str1_addr - str2_addr is not a multiple of 4, compare bytewise
+  lsls  r2, r0, #30         @ look at the 2 least-significant bits of str1_addr
+  beq   word_compare        @ if aligned to 4 bytes, we can compare wordwise
+@ if str1_addr - str2_addr is a multiple of 4, but str1_addr is not 4-byte aligned, it is possible to compare
+@ wordwise once we achieve 4-byte alignment
 
-  mov   r3, r0              @ copy destination addr into r3
-  cmp   r2, #4              @ check if there are 4+ bytes to copy
-  blo   copy_single         @ if not, copy one at a time
-  cmp   r2, #16             @ check if there are 16+ bytes to copy
-  blo   quad_byte_copy      @ if not, copy 4 bytes at a time
-  tst   r4, r5              @ check if dest-source is a multiple of 4
-  bne   quad_byte_copy      @ if not, copy 4 bytes at a time
-  tst   r1, r5              @ check if the source address is 4-byte aligned
-  beq   quad_word_copy      @ if so, the data can be copied 4 words at a time
-
-@ if dest-source is a multiple of 4, but source is not 4-byte aligned, we can
-@ copy the first few bytes individually until source and destination are aligned.
-align_chunk:
-  ldrb  r4, [r1]            @ load byte from memory[r1] into r4
-  strb  r4, [r3]            @ store r4 byte into memory[r3]
+@ compare bytewise until aligned
+align_to_word:
+  ldrb  r2, [r0]
+  ldrb  r3, [r1]
+  adds  r0, r0, #1
   adds  r1, r1, #1
-  adds  r3, r3, #1
-  subs  r2, r2, #1          @ decrement remaining bytes by 1
-  tst   r1, r5              @ check if the source address is 4-byte aligned
-  bne   align_chunk         @ if not, repeat
-  cmp   r2, #16             @ check if there are 16+ bytes to copy
-  blo   quad_byte_copy      @ if not, copy 4 bytes at a time
+  cmp   r2, #0
+  beq   sub_and_exit
+  cmp   r2, r3
+  bne   sub_and_exit
+  lsls  r4, r0, #30
+  bne   align_to_word
 
-@ there are 16 or more bytes to copy and the src and dest are 4-byte aligned, so we can copy word-wise
-quad_word_copy:
-  push  {r6, r7}            @ store r6 & r7 values on stack
-.balign 4                   @ align the loop to an 4 byte boundary
-qwc_loop:
-  ldm   r1!, {r4-r7}        @ load r4-r7 with words from memory[r1], then increment r1 by 16
-  stm   r3!, {r4-r7}        @ store r4-r7 values into memory[r3], then increment r3 by 16
-  subs  r2, r2, #16         @ decrement remaining bytes by 16
-  cmp   r2, #16
-  bhs   qwc_loop    @ if there are 16+ bytes left, quad word copy again
-  pop   {r6, r7}          @ if not, restore r6 & r7, we are done using them
-  cmp   r2, #4
-  bhs   quad_byte_copy         @ if there are 4+ bytes left, quad byte copy
-  cmp   r2, #0              @ check if there are 0 bytes left to copy
-  bne   copy_single     @ if not, finish with single byte copying
-  b     exit                @ otherwise, exit
+word_compare:
+  ldr   r5, =#0x01010101     @ put 0x01010101 into r5 to later check for nulls
+  lsls  r6, r5, #7          @ put 0x80808080 into r6 to later check for nulls
+wc_loop:
+  ldm   r0!, {r2}           @ load the word r0 points to into r2, and increment r0 by 4 after
+  ldm   r1!, {r3}           @ load the word r1 points to into r3, and increment r1 by 4 after
+  
+  @ test if r2 contains any null bytes (0x00) using the algorithm found here: https://graphics.stanford.edu/~seander/bithacks.html#HasLessInWord
+  subs  r4, r2, r5          @ do r2 - 0x01010101 and store it in r4
+  bics  r4, r4, r2          @ do r4 & ~(r2) and store it in r4
+  ands  r4, r4, r6          @ do r4 & 0x80808080 and store it in r4
+  bne   find_different_byte @ if there were any null bytes in r2, r4 will be nonzero in the null-byte byte
+  cmp   r2, r3
+  beq   wc_loop             @ the two words matched, now loop and do it again   
+
+find_different_byte:
+  uxtb  r0, r2
+  uxtb  r1, r3
+  subs  r0, r0, r1
+  lsls  r1, r4, #24
+  orrs  r1, r0, r1
+  bne   exit
+  uxth  r0, r2
+  uxth  r1, r3
+  subs  r0, r0, r1
+  asrs  r0, r0, #8
+  lsls  r1, r4, #16
+  orrs  r1, r0, r1
+  bne   exit
+  lsls  r0, r2, #8
+  lsrs  r0, r0, #8
+  lsls  r1, r3, #8
+  lsrs  r1, r1, #8
+  subs  r0, r0, r1
+  asrs  r0, r0, #16
+  lsls  r1, r4, #8
+  orrs  r1, r0, r1
+  bne   exit
+  lsrs  r0, r2, #24
+  lsrs  r1, r3, #24
+  subs  r0, r0, r1
+  b     exit
 
 
-.balign 8                   @ align the loop to an 8 byte boundary
-  nop
-  nop
-quad_byte_copy:                @ copy 4 bytes at a time
-  ldrb  r4, [r1]            @ load byte from memory[r1] into r4
-  strb  r4, [r3]            @ store r4 byte into memory[r3]
-  ldrb  r4, [r1, #1]
-  strb  r4, [r3, #1]
-  ldrb  r4, [r1, #2]
-  strb  r4, [r3, #2]
-  ldrb  r4, [r1, #3]
-  strb  r4, [r3, #3]
-  adds  r1, r1, #4          @ increment r1 and r3 by 4
-  adds  r3, r3, #4
-  subs  r2, r2, #4          @ decrement remaining bytes by 4
-  cmp   r2, #4              @ check if there are 4 or more bytes to copy
-  bhs   quad_byte_copy         @ if so, quad copy again
+@ find_different_byte:
+@   rev   r2, r2
+@   rev   r3, r3
+@   lsrs  r1, r3, #24
+@   lsrs  r0, r2, #24
+@   beq   sub_and_exit
+@   subs  r0, r0, r1
+@   bne   exit
+@   lsrs  r1, r3, #16
+@   lsrs  r0, r2, #16
+@   beq   sub_and_exit
+@   subs  r0, r0, r1
+@   bne   exit
+@   lsrs  r0, r2, #8
+@   lsrs  r1, r3, #8
+@   subs  r0, r0, r1
+@   bne   exit
+@   b     sub_and_exit
 
-  cmp   r2, #0              @ check if there are 0 bytes left to copy
-  beq   exit                @ if so, exit
-@ otherwise, there are <4 bytes left to copy
-
-copy_single:
-  ldrb  r4, [r1]            @ load byte from memory[r1] into r4
-  strb  r4, [r3]            @ store r4 byte into memory[r3]
+byte_compare:
+  ldrb  r2, [r0]
+  ldrb  r3, [r1]
+  adds  r0, r0, #1
   adds  r1, r1, #1
-  adds  r3, r3, #1
-  subs  r2, r2, #1          @ decrement remaining bytes by 1
-  bne   copy_single         @ if bytes are left, repeat
+  cmp   r2, #0
+  beq   sub_and_exit
+  cmp   r2, r3
+  beq   byte_compare
+
+sub_and_exit:
+  subs  r0, r2, r3
 
 exit:
-  pop   {r4, r5}        @ restore previous value of r4 & r5
+  pop   {r4, r5, r6}        @ restore previous value of r4 & r5
 no_pop_exit:
   bx    lr                  @ exit function
 
