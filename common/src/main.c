@@ -40,13 +40,12 @@ static inline uint32_t get_cycle_count(void);
 
 static void run_test(void);
 
-TEST memcpy_test(uint32_t data_len, uint32_t src_offset, uint32_t dest_offset, bool print_performance);
-TEST memcpy_iterate(uint32_t data_len_limit);
-TEST memcpy_slide_dest(uint32_t data_len, uint32_t src_offset);
+TEST strcmp_test(const char *str1, const char *str2, bool print_performance);
+TEST strcmp_variable_alignment(const char *str1, const char *str2, bool print_performance);
 
-#define BUFFER_SIZE 0x1000
+#define BUFFER_SIZE 0x100
 
-extern void* memcpy_(void *destination, const void *source, size_t num);
+extern int strcmp_(const char *str1, const char *str2);
 
 // Add definitions that need to be in the test runner's main file.
 GREATEST_MAIN_DEFS();
@@ -116,105 +115,50 @@ static void run_test(void)
 
   GREATEST_MAIN_BEGIN();  // command-line options, initialization.
 
-  RUN_TESTp(memcpy_test, 1, 0x2, 0x7E, true);
-  RUN_TESTp(memcpy_test, 10, 0x2, 0x7E, true);
-  RUN_TESTp(memcpy_test, 20, 0x2, 0x7E, true);
-  RUN_TESTp(memcpy_test, 50, 0x2, 0x7E, true);
 
-  RUN_TESTp(memcpy_test, 1, 0x2, 0x82, true);
-  RUN_TESTp(memcpy_test, 10, 0x2, 0x82, true);
-  RUN_TESTp(memcpy_test, 20, 0x2, 0x82, true);
-  RUN_TESTp(memcpy_test, 50, 0x2, 0x82, true);
-
-  RUN_TESTp(memcpy_test, 1, 0x1, 0x102, true);
-  RUN_TESTp(memcpy_test, 10, 0x1, 0x102, true);
-  RUN_TESTp(memcpy_test, 20, 0x1, 0x102, true);
-  RUN_TESTp(memcpy_test, 50, 0x1, 0x102, true);
-  RUN_TESTp(memcpy_test, 200, 0x1, 0x102, true);
-
-  RUN_TESTp(memcpy_slide_dest, 0x0f, 0x81);
-  RUN_TESTp(memcpy_slide_dest, 0x10, 0x80);
-  RUN_TESTp(memcpy_slide_dest, 0x22, 0x17f);
-  RUN_TESTp(memcpy_slide_dest, 0x200, 0x400);
-
-  // RUN_TEST1(memcpy_iterate, 20);
+  RUN_TESTp(strcmp_variable_alignment, "test", "test", true);
+  RUN_TESTp(strcmp_variable_alignment, "test_string1", "test_string2", true);
 
   GREATEST_MAIN_END();    // display results
 }
 
-TEST memcpy_test(uint32_t data_len, uint32_t src_offset, uint32_t dest_offset, bool print_performance)
+TEST strcmp_test(const char *str1, const char *str2, bool print_performance)
 {
+  int expected_retval = strcmp(str1, str2);
+  uint32_t strcmp_orig_start = get_cycle_count();
+  expected_retval = strcmp(str1, str2);
+  uint32_t strcmp_orig_stop = get_cycle_count();
 
-  uint8_t expected[BUFFER_SIZE] = {0};
-  uint8_t actual[BUFFER_SIZE] = {0};
-
-  if(((data_len + src_offset) > BUFFER_SIZE) || ((data_len + dest_offset) > BUFFER_SIZE)){
-    FAIL();
-  }
-
-
-  uint32_t i;
-
-  for(i = 0; i < data_len; i++){
-    expected[src_offset + i] = i;
-    actual[src_offset + i] = i;
-  }
-
-  uint32_t memmove_orig_start = get_cycle_count();
-  memcpy(&(expected[dest_offset]), &(expected[src_offset]), data_len);
-  uint32_t memmove_orig_stop = get_cycle_count();
-
-  uint32_t memmove_new_start = get_cycle_count();
-  memcpy_(&(actual[dest_offset]), &(actual[src_offset]), data_len);
-  uint32_t memmove_new_stop = get_cycle_count();
-
-
+  int actual_retval = strcmp(str1, str2);
+  uint32_t strcmp_new_start = get_cycle_count();
+  actual_retval = strcmp(str1, str2);
+  uint32_t strcmp_new_stop = get_cycle_count();
 
   if(print_performance){
-    uint32_t orig_cycle = memmove_orig_stop-memmove_orig_start;
-    uint32_t new_cycle = memmove_new_stop-memmove_new_start;
+    uint32_t orig_cycle = strcmp_orig_stop-strcmp_orig_start;
+    uint32_t new_cycle = strcmp_new_stop-strcmp_new_start;
     int32_t cycle_diff = orig_cycle - new_cycle;
-    printfln_("%-6u %-#10x %-#10x %-8u %-8u %-8d", data_len, src_offset, dest_offset, orig_cycle, new_cycle, cycle_diff);
+    printfln_("%-6u %-#10x %-#10x %-8u %-8u %-8d", 0, 0, 0, orig_cycle, new_cycle, cycle_diff);
   }
 
-  ASSERT_MEM_EQ(expected, actual, BUFFER_SIZE);
-
+  ASSERT_EQ(expected_retval, actual_retval);
   PASS();
 }
 
-TEST memcpy_iterate(uint32_t data_len_limit)
+TEST strcmp_variable_alignment(const char *str1, const char *str2, bool print_performance)
 {
-  uint32_t data_len;
-  uint32_t src_offset;
-  uint32_t dest_offset;
+  char s1[BUFFER_SIZE] __attribute__((aligned(4))) = {0};
+  char s2[BUFFER_SIZE] __attribute__((aligned(4))) = {0};
 
-  for(data_len = 0; data_len < data_len_limit; data_len++){
-    for(src_offset = 0; src_offset < 5; src_offset++){
-      for(dest_offset = data_len; dest_offset < (data_len + 8); dest_offset++){
-        CHECK_CALL(memcpy_test(data_len, src_offset, dest_offset, false));
-      }
+  for(int s1_offset = 0; s1_offset < 4; s1_offset++){
+    for(int s2_offset = 0; s2_offset < 4; s2_offset++){
+      char *s1_addr = s1 + s1_offset;
+      char *s2_addr = s2 + s2_offset;
+      strcpy(s1_addr, str1);
+      strcpy(s2_addr, str2);
+      CHECK_CALL(strcmp_test(s1_addr, s2_addr, print_performance));
     }
   }
-
-  PASS();
-}
-
-TEST memcpy_slide_dest(uint32_t data_len, uint32_t src_offset)
-{
-  uint32_t dest_offset;
-
-  if((src_offset < data_len) || (src_offset + (2 * data_len)) > BUFFER_SIZE){
-    FAIL();
-  }
-
-  CHECK_CALL(memcpy_test(data_len, src_offset, 0, true));
-  CHECK_CALL(memcpy_test(data_len, src_offset, src_offset-data_len, true));
-
-  CHECK_CALL(memcpy_test(data_len, src_offset, src_offset, true));
-
-  CHECK_CALL(memcpy_test(data_len, src_offset, src_offset+data_len, true));
-  CHECK_CALL(memcpy_test(data_len, src_offset, BUFFER_SIZE-data_len, true));
-
   PASS();
 }
 
@@ -244,7 +188,7 @@ static void init_IPCC(void)
 #endif
 }
 
-static inline uint32_t get_cycle_count(void)
+static inline __attribute__((always_inline)) uint32_t get_cycle_count(void)
 {
 #if defined(CORE_CM0PLUS)
   LL_C2_IPCC_SetFlag_CHx(IPCC, LL_IPCC_CHANNEL_1);

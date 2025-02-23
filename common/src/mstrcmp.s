@@ -8,10 +8,10 @@
   @ align the next variable or instruction on a 2-byte boundary
   .balign 2
   @ make the symbol visible to the linker
-  .global memcpy_
+  .global strcmp_
   @ marks the symbol as being a function name
-  .type memcpy_, STT_FUNC
-memcpy_:
+  .type strcmp_, STT_FUNC
+strcmp_:
 @ r0 = destination addr
 @ r1 = source addr
 @ r2 = num bytes
@@ -101,5 +101,5 @@ exit:
 no_pop_exit:
   bx    lr                  @ exit function
 
-  .size memcpy_, . - memcpy_
+  .size strcmp_, . - strcmp_
 
