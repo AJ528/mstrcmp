@@ -122,9 +122,26 @@ static void run_test(void)
   RUN_TESTp(strcmp_variable_alignment, "tstring2", "tstring1", true);
   RUN_TESTp(strcmp_variable_alignment, "testa", "testA", true);
   RUN_TESTp(strcmp_variable_alignment, "testA", "testa", true);
+  RUN_TESTp(strcmp_variable_alignment, "t", "t", true);
+  RUN_TESTp(strcmp_variable_alignment, "t", "te", true);
+  RUN_TESTp(strcmp_variable_alignment, "t", "tes", true);
+  RUN_TESTp(strcmp_variable_alignment, "t", "test", true);
+  RUN_TESTp(strcmp_variable_alignment, "t", "testA", true);
+  RUN_TESTp(strcmp_variable_alignment, "te", "t", true);
+  RUN_TESTp(strcmp_variable_alignment, "tes", "t", true);
+  RUN_TESTp(strcmp_variable_alignment, "test", "t", true);
+  RUN_TESTp(strcmp_variable_alignment, "testA", "t", true);
   RUN_TESTp(strcmp_variable_alignment, "four score and seven years ago there was a very long string", "four score and seven years ago there was a very long string", true);
   RUN_TESTp(strcmp_variable_alignment, "four score and seven years ag0 there was a very long string", "four score and seven years ago there was a very long string", true);
   RUN_TESTp(strcmp_variable_alignment, "four score and seven years ago there was a very long string", "four score and seven years ago there was a very lon% string", true);
+  RUN_TESTp(strcmp_variable_alignment, "", "", true);
+  RUN_TESTp(strcmp_variable_alignment, "", "0", true);
+  
+  char test_str[] = "tstring";
+  RUN_TESTp(strcmp_test, test_str, test_str, true);
+  RUN_TESTp(strcmp_test, test_str+1, test_str, true);
+
+  
 
   // RUN_TESTp(strcmp_special_alignment, "tstring2", "tstring1", 2, 1, true);
   // RUN_TESTp(strcmp_special_alignment, "tstring2", "tstring1", 2, 2, true);
